@@ -2,6 +2,10 @@ set(HOST_APP_PATH "")
 set(REACT_COMMON_DIR "")
 
 function (TurboModuleTesting_ConfigureBasedOnApp app_path)
+    if(NOT APPLE)
+        message(FATAL_ERROR "🛑 TurboModuleTesting_ConfigureBasedOnApp only supports macOS")
+    endif()
+    
     message(STATUS "⚛️🚀 TurboModuleTesting_ConfigureBasedOnApp: ${app_path}")
 
     set(HOST_APP_PATH "${app_path}")
