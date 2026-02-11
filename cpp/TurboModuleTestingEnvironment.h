@@ -38,6 +38,30 @@ public:
         setupTurboModuleEnvironment();
     }
 
+    facebook::jsi::Runtime& rt()
+    {
+        return _hermesRT->getUnsafeRuntime();
+    }
+
+    std::shared_ptr<facebook::react::CallInvoker> jsInvoker()
+    {
+        return _jsInvoker;
+    }
+
+    facebook::jsi::Value evaluateJavascript(const std::string& jsCode, const std::string& jsPath = "placeholder.js")
+    {
+        auto strBuffer = std::make_shared<facebook::jsi::StringBuffer>(jsCode);
+        std::shared_ptr<facebook::jsi::Buffer> buffer = std::static_pointer_cast<facebook::jsi::Buffer>(strBuffer);
+        facebook::jsi::Value result = rt().evaluateJavaScript(buffer, jsPath);
+        return result;
+    }
+
+    void clearCache()
+    {
+        _turboModuleCache.clear();
+    }
+
+private:
     void setupTurboModuleEnvironment()
     {
         auto turboModuleProvider = [this](const std::string& name) -> std::shared_ptr<facebook::react::TurboModule> {
@@ -61,25 +85,6 @@ public:
             rt(), std::move(turboModuleProvider));
     }
 
-    facebook::jsi::Runtime& rt()
-    {
-        return _hermesRT->getUnsafeRuntime();
-    }
-
-    std::shared_ptr<facebook::react::CallInvoker> jsInvoker()
-    {
-        return _jsInvoker;
-    }
-
-    facebook::jsi::Value evaluateJavascript(const std::string& jsCode, const std::string& jsPath = "placeholder.js")
-    {
-        auto strBuffer = std::make_shared<facebook::jsi::StringBuffer>(jsCode);
-        std::shared_ptr<facebook::jsi::Buffer> buffer = std::static_pointer_cast<facebook::jsi::Buffer>(strBuffer);
-        facebook::jsi::Value result = rt().evaluateJavaScript(buffer, jsPath);
-        return result;
-    }
-
-private:
     std::unique_ptr<facebook::jsi::ThreadSafeRuntime>
         _hermesRT;
     std::shared_ptr<facebook::react::CallInvoker> _jsInvoker;

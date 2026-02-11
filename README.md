@@ -34,6 +34,30 @@ https://github.com/davehunter/TurboModuleTestingExample
 4. Since Android uses CMake, if you’re careful you can reuse much of the same CMake code for both Android and macOS.  
    **Note:** Do not call any of this library’s functions when building for Android.
 
+## Writing Tests
+
+- If you only want to verify that the project builds, simply linking the library into a test target is enough.
+- For more meaningful tests, use the included **`TurboModuleTestingEnvironment`** utility.
+
+`TurboModuleTestingEnvironment` provides:
+
+- A **Hermes JSI runtime** (`ThreadSafeRuntime`) for executing JavaScript
+- Automatic installation of the **TurboModule binding** into the runtime
+- A TurboModule provider backed by React Native’s **`globalExportedCxxTurboModuleMap()`**
+- A **synchronous `CallInvoker`** implementation, so both sync and async calls run deterministically during tests
+- A helper to **evaluate JavaScript**, making it easy to drive and validate native TurboModules from JS
+- Per-name **TurboModule caching** for the lifetime of the environment
+
+In practice, your tests typically:
+
+1. Ensure the TurboModule(s) you want to test are registered/exported into the global C++ TurboModule map
+2. Create a `TurboModuleTestingEnvironment`
+3. Evaluate JavaScript that calls into the module
+4. Assert on returned values, thrown errors, or side effects
+
+> Note: TurboModules are cached per `TurboModuleTestingEnvironment` instance.  
+> If you need test isolation, create a new environment per test case.
+
 ## Notes
 
 This is an experimental project. It has only been tested with React Native 0.83.1.
