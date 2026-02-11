@@ -24,7 +24,7 @@ LogMessage::~LogMessage() = default;
 
 std::ostream& LogMessage::stream()
 {
-    static std::ostringstream sink;
+    thread_local std::ostringstream sink;
     return sink;
 }
 

@@ -25,25 +25,20 @@ function (TurboModuleTesting_ConfigureBasedOnApp app_path)
 
     include("${REACT_COMMON_DIR}/cmake-utils/internal/react-native-platform-selector.cmake")
 
-    add_subdirectory("${REACT_COMMON_DIR}/callinvoker")
-    add_subdirectory("${REACT_COMMON_DIR}/reactperflogger")
-    add_subdirectory("${REACT_COMMON_DIR}/logger")
-    add_subdirectory("${REACT_COMMON_DIR}/react/timing")
-    add_subdirectory("${REACT_COMMON_DIR}/react/bridging")
-    add_subdirectory("${REACT_COMMON_DIR}/react/debug")
-    add_subdirectory("${REACT_COMMON_DIR}/react/featureflags")
-    add_subdirectory("${REACT_COMMON_DIR}/react/utils")
-    if(ANDROID)
-        add_subdirectory("${REACT_COMMON_DIR}/jsinspector-modern")
-    else()
-        add_library(jsinspector INTERFACE)
-        target_include_directories(jsinspector INTERFACE "${REACT_COMMON_DIR}")
-    endif()
-    add_subdirectory("${REACT_COMMON_DIR}/runtimeexecutor")
-    add_subdirectory("${REACT_COMMON_DIR}/react/nativemodule/core")
-    add_subdirectory("${REACT_COMMON_DIR}/cxxreact")
+    add_subdirectory("${REACT_COMMON_DIR}/callinvoker" "${CMAKE_BINARY_DIR}/callinvoker")
+    add_subdirectory("${REACT_COMMON_DIR}/reactperflogger" "${CMAKE_BINARY_DIR}/reactperflogger")
+    add_subdirectory("${REACT_COMMON_DIR}/logger" "${CMAKE_BINARY_DIR}/logger")
+    add_subdirectory("${REACT_COMMON_DIR}/react/timing" "${CMAKE_BINARY_DIR}/react_timing")
+    add_subdirectory("${REACT_COMMON_DIR}/react/bridging" "${CMAKE_BINARY_DIR}/react_bridging")
+    add_subdirectory("${REACT_COMMON_DIR}/react/debug" "${CMAKE_BINARY_DIR}/react_debug")
+    add_subdirectory("${REACT_COMMON_DIR}/react/featureflags" "${CMAKE_BINARY_DIR}/react_featureflags")
+    add_subdirectory("${REACT_COMMON_DIR}/react/utils" "${CMAKE_BINARY_DIR}/react_utils")
+    add_library(jsinspector INTERFACE)
+    target_include_directories(jsinspector INTERFACE "${REACT_COMMON_DIR}")
+    add_subdirectory("${REACT_COMMON_DIR}/runtimeexecutor" "${CMAKE_BINARY_DIR}/runtimeexecutor")
+    add_subdirectory("${REACT_COMMON_DIR}/react/nativemodule/core" "${CMAKE_BINARY_DIR}/react_nativemodule_core")
+    add_subdirectory("${REACT_COMMON_DIR}/cxxreact" "${CMAKE_BINARY_DIR}/cxxreact")
 
-    if(NOT ANDROID)
     set(RN_TARGETS
         logger
         reactperflogger
@@ -63,7 +58,6 @@ function (TurboModuleTesting_ConfigureBasedOnApp app_path)
         LinkInHermes(${rn_target})
         endif()
     endforeach()
-    endif()
 
     set(POD_HEADERS_PATH "${HOST_APP_PODS_ROOT}/Headers/Public")
 
@@ -76,7 +70,6 @@ function (TurboModuleTesting_ConfigureBasedOnApp app_path)
 
     LinkInHermes(TurboModuleTesting)
     target_link_libraries(TurboModuleTesting glog_stub react_utils react_bridging)
-    # end from this cpp folder
 
     foreach(rn_stub_lib IN ITEMS folly_runtime glog glog_init boost jsi)
       if(NOT TARGET ${rn_stub_lib})
@@ -88,7 +81,7 @@ function (TurboModuleTesting_ConfigureBasedOnApp app_path)
 endfunction()
 
 function(AddTurboModuleJSI targetName turboModuleName)
-  # Ruedely use the generated JSI files from the HostApp's build
+  # Rudely use the generated JSI files from the HostApp's build
   list(APPEND JSI_GENERATED_SOURCES
     "${CODEGEN_BASE_PATH}/${turboModuleName}JSI.h"
   )
@@ -176,7 +169,7 @@ function (TurboModuleTesting_AddTurboModuleDependencies target turboModuleName)
     ApplyAppleReactNativeSettings(${target})
     LinkInHermes(${target})
     target_link_libraries(${target} react_nativemodule_core)
-    AddTurboModuleJSI(TurboModuleTesting "${turboModuleName}")
+    AddTurboModuleJSI(${target} "${turboModuleName}")
 
     target_link_libraries(${target} TurboModuleTesting)
 endfunction()

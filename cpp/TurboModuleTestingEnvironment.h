@@ -3,9 +3,10 @@
 #include <ReactCommon/CxxTurboModuleUtils.h>
 #include <ReactCommon/TurboModuleBinding.h>
 #include <hermes/hermes.h>
-#include <iostream>
 #include <jsi/threadsafe.h>
 #include <memory>
+#include <string>
+#include <unordered_map>
 
 class SyncCallInvoker : public facebook::react::CallInvoker {
 public:
@@ -40,21 +41,19 @@ public:
     void setupTurboModuleEnvironment()
     {
         auto turboModuleProvider = [this](const std::string& name) -> std::shared_ptr<facebook::react::TurboModule> {
-            auto moduleName = name.c_str();
-
-            auto turboModuleLookup = _turboModuleCache.find(moduleName);
+            auto turboModuleLookup = _turboModuleCache.find(name);
             if (turboModuleLookup != _turboModuleCache.end()) {
                 return turboModuleLookup->second;
             }
 
             auto& cxxTurboModuleMapProvider = facebook::react::globalExportedCxxTurboModuleMap();
-            auto it = cxxTurboModuleMapProvider.find(moduleName);
+            auto it = cxxTurboModuleMapProvider.find(name);
 
             if (it != cxxTurboModuleMapProvider.end()) {
                 auto turboModule = it->second(jsInvoker());
-                _turboModuleCache.insert({ moduleName, turboModule });
+                _turboModuleCache.insert({ name, turboModule });
                 return turboModule;
-            };
+            }
             return nullptr;
         };
 
@@ -72,9 +71,9 @@ public:
         return _jsInvoker;
     }
 
-    facebook::jsi::Value evaluteJavascript(std::string jsCode, std::string jsPath = "placeholder.js")
+    facebook::jsi::Value evaluateJavascript(const std::string& jsCode, const std::string& jsPath = "placeholder.js")
     {
-        std::shared_ptr<facebook::jsi::StringBuffer> strBuffer = std::make_shared<facebook::jsi::StringBuffer>(jsCode);
+        auto strBuffer = std::make_shared<facebook::jsi::StringBuffer>(jsCode);
         std::shared_ptr<facebook::jsi::Buffer> buffer = std::static_pointer_cast<facebook::jsi::Buffer>(strBuffer);
         facebook::jsi::Value result = rt().evaluateJavaScript(buffer, jsPath);
         return result;
@@ -87,4 +86,4 @@ private:
     std::unordered_map<std::string, std::shared_ptr<facebook::react::TurboModule>> _turboModuleCache;
 };
 
-#endif // _H_TurboModuleTestingEnvironment_
+#endif // _H_TurboModuleTestingEnvironment_};

@@ -1,0 +1,12 @@
+---
+BasedOnStyle: WebKit
+IndentWidth: 4
+---
+Language: Cpp
+---
+Language: JavaScript
+---
+Language: ObjC
+---
+Language: Json
+---
