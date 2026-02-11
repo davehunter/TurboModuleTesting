@@ -1,0 +1,33 @@
+{
+    "C_Cpp.default.compileCommands": "${workspaceFolder}/_build/compile_commands.json",
+    "cmake.buildDirectory": "${workspaceFolder}/_build/${buildType}",
+    "cmake.configureOnOpen": false,
+    "cmake.configureOnEdit": false,
+    "cmake.generator": "Ninja",
+    "cmake.sourceDirectory": "${workspaceFolder}",
+    "[c]": {
+        "editor.defaultFormatter": "xaver.clang-format"
+    },
+    "[cpp]": {
+        "editor.defaultFormatter": "xaver.clang-format"
+    },
+    "[objective-c]": {
+        "editor.defaultFormatter": "xaver.clang-format"
+    },
+    "[objective-c++]": {
+        "editor.defaultFormatter": "xaver.clang-format"
+    },
+    "[typescript]": {
+        "editor.defaultFormatter": "esbenp.prettier-vscode"
+    },
+    "[typescriptreact]": {
+        "editor.defaultFormatter": "esbenp.prettier-vscode"
+    },
+    "[javascript]": {
+        "editor.defaultFormatter": "esbenp.prettier-vscode"
+    },
+    "[json]": {
+        "editor.defaultFormatter": "esbenp.prettier-vscode"
+    },
+    "editor.formatOnSave": true
+}
