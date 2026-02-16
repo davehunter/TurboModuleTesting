@@ -1,5 +1,12 @@
 set(HOST_APP_PATH "")
+set(NODE_MODULES_PATH "")
 set(REACT_COMMON_DIR "")
+
+# TurboModuleTesting_ConfigureBasedOnApp
+# Configures the TurboModuleTesting target based on the provided app path. This includes setting up include directories, linking necessary libraries, and configuring paths to Hermes and React Native dependencies.
+# Parameters:
+#   app_path: The file system path to the host application. This is used to derive paths to node_modules, Pods, and generated code.
+#   node_modules_path: (Optional) The file system path to the node_modules directory. If not provided, it will be derived from the app_path.
 
 function (TurboModuleTesting_ConfigureBasedOnApp app_path)
     if(NOT APPLE)
@@ -10,6 +17,13 @@ function (TurboModuleTesting_ConfigureBasedOnApp app_path)
 
     set(HOST_APP_PATH "${app_path}")
     set(HOST_APP_PATH "${app_path}" PARENT_SCOPE)
+    set(_configured_node_modules_path "${HOST_APP_PATH}/node_modules")
+    if(ARGC GREATER 1)
+      set(_configured_node_modules_path "${ARGV1}")
+      message(STATUS "⚛️🚀 TurboModuleTesting_ConfigureBasedOnApp node modules: ${_configured_node_modules_path}")
+    endif()
+    set(NODE_MODULES_PATH "${_configured_node_modules_path}")
+    set(NODE_MODULES_PATH "${_configured_node_modules_path}" PARENT_SCOPE)
     set(HOST_APP_PODS_ROOT "${HOST_APP_PATH}/ios/Pods")
     set(HOST_APP_PODS_ROOT "${HOST_APP_PATH}/ios/Pods" PARENT_SCOPE)
     set(HERMES_BASE_PATH "${HOST_APP_PODS_ROOT}/hermes-engine/destroot")
@@ -18,8 +32,8 @@ function (TurboModuleTesting_ConfigureBasedOnApp app_path)
     set(HERMES_FRAMEWORK_PATH "${HERMES_BASE_PATH}/Library/Frameworks/macosx/hermesvm.framework" PARENT_SCOPE)
     set(HERMES_INCLUDE_PATH "${HERMES_BASE_PATH}/include")
     set(HERMES_INCLUDE_PATH "${HERMES_BASE_PATH}/include" PARENT_SCOPE)
-    set(REACT_COMMON_DIR "${HOST_APP_PATH}/node_modules/react-native/ReactCommon")
-    set(REACT_COMMON_DIR "${HOST_APP_PATH}/node_modules/react-native/ReactCommon" PARENT_SCOPE)
+    set(REACT_COMMON_DIR "${NODE_MODULES_PATH}/react-native/ReactCommon")
+    set(REACT_COMMON_DIR "${NODE_MODULES_PATH}/react-native/ReactCommon" PARENT_SCOPE)
     set(CODEGEN_BASE_PATH "${HOST_APP_PATH}/ios/build/generated/ios/ReactCodegen")
     set(CODEGEN_BASE_PATH "${HOST_APP_PATH}/ios/build/generated/ios/ReactCodegen" PARENT_SCOPE)
 
