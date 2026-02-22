@@ -60,4 +60,4 @@ In practice, your tests typically:
 
 ## Notes
 
-This is an experimental project. It has only been tested with React Native 0.83.1.
+This is an experimental project. It has only been tested with React Native 0.81.5 and 0.83.1.
