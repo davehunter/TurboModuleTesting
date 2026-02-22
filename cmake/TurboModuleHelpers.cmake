@@ -34,8 +34,14 @@ function (TurboModuleTesting_ConfigureBasedOnApp app_path)
     set(HERMES_INCLUDE_PATH "${HERMES_BASE_PATH}/include" PARENT_SCOPE)
     set(REACT_COMMON_DIR "${NODE_MODULES_PATH}/react-native/ReactCommon")
     set(REACT_COMMON_DIR "${NODE_MODULES_PATH}/react-native/ReactCommon" PARENT_SCOPE)
+  
+    # CODEGEN_BASE_PATH can change depending on RN version.  Assume RN 0.84, and fall back to a more general path if the 0.84 one doesn't exist.
     set(CODEGEN_BASE_PATH "${HOST_APP_PATH}/ios/build/generated/ios/ReactCodegen")
     set(CODEGEN_BASE_PATH "${HOST_APP_PATH}/ios/build/generated/ios/ReactCodegen" PARENT_SCOPE)
+    if(NOT EXISTS "${CODEGEN_BASE_PATH}")
+      set(CODEGEN_BASE_PATH "${HOST_APP_PATH}/ios/build/generated/ios")
+      set(CODEGEN_BASE_PATH "${HOST_APP_PATH}/ios/build/generated/ios" PARENT_SCOPE)
+    endif()
 
     include("${REACT_COMMON_DIR}/cmake-utils/internal/react-native-platform-selector.cmake")
 
