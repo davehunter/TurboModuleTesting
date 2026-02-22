@@ -29,7 +29,13 @@ function (TurboModuleTesting_ConfigureBasedOnApp app_path)
     set(HERMES_BASE_PATH "${HOST_APP_PODS_ROOT}/hermes-engine/destroot")
     set(HERMES_BASE_PATH "${HOST_APP_PODS_ROOT}/hermes-engine/destroot" PARENT_SCOPE)
     set(HERMES_FRAMEWORK_PATH "${HERMES_BASE_PATH}/Library/Frameworks/macosx/hermesvm.framework")
-    set(HERMES_FRAMEWORK_PATH "${HERMES_BASE_PATH}/Library/Frameworks/macosx/hermesvm.framework" PARENT_SCOPE)
+    if(NOT EXISTS "${HERMES_FRAMEWORK_PATH}")
+      set(HERMES_FRAMEWORK_PATH "${HERMES_BASE_PATH}/Library/Frameworks/macosx/hermes.framework")
+    endif()
+    if(NOT EXISTS "${HERMES_FRAMEWORK_PATH}")
+      message(FATAL_ERROR "🛑 Unable to find Hermes framework at ${HERMES_BASE_PATH}/Library/Frameworks/macosx (expected hermesvm.framework or hermes.framework)")
+    endif()
+    set(HERMES_FRAMEWORK_PATH "${HERMES_FRAMEWORK_PATH}" PARENT_SCOPE)
     set(HERMES_INCLUDE_PATH "${HERMES_BASE_PATH}/include")
     set(HERMES_INCLUDE_PATH "${HERMES_BASE_PATH}/include" PARENT_SCOPE)
     set(REACT_COMMON_DIR "${NODE_MODULES_PATH}/react-native/ReactCommon")
@@ -58,6 +64,7 @@ function (TurboModuleTesting_ConfigureBasedOnApp app_path)
     add_subdirectory("${REACT_COMMON_DIR}/runtimeexecutor" "${CMAKE_BINARY_DIR}/runtimeexecutor")
     add_subdirectory("${REACT_COMMON_DIR}/react/nativemodule/core" "${CMAKE_BINARY_DIR}/react_nativemodule_core")
     add_subdirectory("${REACT_COMMON_DIR}/cxxreact" "${CMAKE_BINARY_DIR}/cxxreact")
+    add_subdirectory("${REACT_COMMON_DIR}/jsiexecutor" "${CMAKE_BINARY_DIR}/jsiexecutor")
 
     set(RN_TARGETS
         logger
@@ -69,6 +76,7 @@ function (TurboModuleTesting_ConfigureBasedOnApp app_path)
         react_timing
         react_nativemodule_core
         react_cxxreact
+        jsireact
         runtimeexecutor
     )
 
@@ -102,9 +110,13 @@ endfunction()
 
 function(AddTurboModuleJSI targetName turboModuleName)
   # Rudely use the generated JSI files from the HostApp's build
-  list(APPEND JSI_GENERATED_SOURCES
-    "${CODEGEN_BASE_PATH}/${turboModuleName}JSI.h"
-  )
+  set(JSI_GENERATED_HEADER "${CODEGEN_BASE_PATH}/${turboModuleName}JSI.h")
+  set(JSI_GENERATED_CPP "${CODEGEN_BASE_PATH}/${turboModuleName}JSI-generated.cpp")
+
+  list(APPEND JSI_GENERATED_SOURCES "${JSI_GENERATED_HEADER}")
+  if(EXISTS "${JSI_GENERATED_CPP}")
+    list(APPEND JSI_GENERATED_SOURCES "${JSI_GENERATED_CPP}")
+  endif()
 
   target_sources(${targetName} PUBLIC ${JSI_GENERATED_SOURCES})
   target_include_directories(${targetName} PUBLIC
@@ -119,6 +131,32 @@ function(ApplyAppleReactNativeSettings targetName)
   set(FMT_ROOT "${HOST_APP_PODS_ROOT}/fmt/include")
   set(DOUBLE_CONVERSION_ROOT "${HOST_APP_PODS_ROOT}/DoubleConversion")
   set(FAST_FLOAT_ROOT "${HOST_APP_PODS_ROOT}/fast_float/include")
+
+  # RN 0.81.5+ (for example with Expo) ships third-party headers under
+  # Pods/ReactNativeDependencies/Headers instead of individual pod folders.
+  set(RN_DEP_HEADERS_ROOT "${HOST_APP_PODS_ROOT}/ReactNativeDependencies/Headers")
+  if(EXISTS "${RN_DEP_HEADERS_ROOT}")
+    set(FOLLY_ROOT "${RN_DEP_HEADERS_ROOT}")
+    set(GLOG_ROOT "${RN_DEP_HEADERS_ROOT}")
+    set(BOOST_ROOT "${RN_DEP_HEADERS_ROOT}")
+    set(FMT_ROOT "${RN_DEP_HEADERS_ROOT}")
+    set(DOUBLE_CONVERSION_ROOT "${RN_DEP_HEADERS_ROOT}")
+    set(FAST_FLOAT_ROOT "${RN_DEP_HEADERS_ROOT}")
+  endif()
+
+  set(THIRD_PARTY_INCLUDE_DIRS)
+  foreach(include_dir IN ITEMS
+    "${FOLLY_ROOT}"
+    "${GLOG_ROOT}"
+    "${BOOST_ROOT}"
+    "${FMT_ROOT}"
+    "${DOUBLE_CONVERSION_ROOT}"
+    "${FAST_FLOAT_ROOT}"
+  )
+    if(EXISTS "${include_dir}")
+      list(APPEND THIRD_PARTY_INCLUDE_DIRS "${include_dir}")
+    endif()
+  endforeach()
   set(REACT_COMMON_INCLUDE_DIRS
     "${REACT_COMMON_DIR}"
     "${REACT_COMMON_DIR}/callinvoker"
@@ -137,23 +175,13 @@ function(ApplyAppleReactNativeSettings targetName)
   if(rn_target_type STREQUAL "INTERFACE_LIBRARY")
     target_include_directories(${targetName} INTERFACE
       ${REACT_COMMON_INCLUDE_DIRS}
-      "${FOLLY_ROOT}"
-      "${GLOG_ROOT}"
-      "${BOOST_ROOT}"
-      "${FMT_ROOT}"
-      "${DOUBLE_CONVERSION_ROOT}"
-      "${FAST_FLOAT_ROOT}"
+      ${THIRD_PARTY_INCLUDE_DIRS}
     )
     target_compile_definitions(${targetName} INTERFACE FOLLY_CFG_NO_COROUTINES=1)
   else()
     target_include_directories(${targetName} PUBLIC
       ${REACT_COMMON_INCLUDE_DIRS}
-      "${FOLLY_ROOT}"
-      "${GLOG_ROOT}"
-      "${BOOST_ROOT}"
-      "${FMT_ROOT}"
-      "${DOUBLE_CONVERSION_ROOT}"
-      "${FAST_FLOAT_ROOT}"
+      ${THIRD_PARTY_INCLUDE_DIRS}
     )
     target_compile_definitions(${targetName} PUBLIC FOLLY_CFG_NO_COROUTINES=1)
   endif()
