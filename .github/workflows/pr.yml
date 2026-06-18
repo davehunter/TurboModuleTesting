@@ -1,0 +1,119 @@
+name: pr
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      matrix_ref:
+        description: 'TurboModuleTestingMatrix ref to check out (branch, tag, or sha)'
+        required: false
+        default: 'main'
+
+concurrency:
+  group: pr-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-matrix:
+    name: Read matrix
+    runs-on: ubuntu-latest
+    outputs:
+      versions: ${{ steps.read.outputs.versions }}
+      matrix_ref: ${{ steps.read.outputs.matrix_ref }}
+    steps:
+      - name: Resolve matrix ref
+        id: ref
+        run: |
+          echo "matrix_ref=${{ github.event.inputs.matrix_ref || 'main' }}" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout TurboModuleTestingMatrix
+        uses: actions/checkout@v4
+        with:
+          repository: davehunter/TurboModuleTestingMatrix
+          ref: ${{ steps.ref.outputs.matrix_ref }}
+          path: matrix
+
+      - name: Read versions.json
+        id: read
+        run: |
+          versions="$(jq -c '[.versions[].rn]' matrix/versions.json)"
+          echo "versions=${versions}" >> "$GITHUB_OUTPUT"
+          echo "matrix_ref=${{ steps.ref.outputs.matrix_ref }}" >> "$GITHUB_OUTPUT"
+
+  matrix:
+    name: RN ${{ matrix.rn }}
+    needs: build-matrix
+    runs-on: macos-15
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        rn: ${{ fromJson(needs.build-matrix.outputs.versions) }}
+    steps:
+      - name: Checkout TurboModuleTesting (this PR)
+        uses: actions/checkout@v4
+        with:
+          path: TurboModuleTesting
+
+      - name: Checkout TurboModuleTestingMatrix
+        uses: actions/checkout@v4
+        with:
+          repository: davehunter/TurboModuleTestingMatrix
+          ref: ${{ needs.build-matrix.outputs.matrix_ref }}
+          path: TurboModuleTestingMatrix
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.2'
+          bundler-cache: false
+
+      - name: Select Xcode
+        run: sudo xcode-select -s /Applications/Xcode_16.app
+
+      - name: Install CMake + Ninja
+        run: brew install cmake ninja
+
+      - name: Cache node_modules
+        uses: actions/cache@v4
+        with:
+          path: TurboModuleTestingMatrix/apps/${{ matrix.rn }}/HostApp/node_modules
+          key: nm-${{ runner.os }}-${{ matrix.rn }}-${{ hashFiles(format('TurboModuleTestingMatrix/apps/{0}/HostApp/package-lock.json', matrix.rn)) }}
+
+      - name: Cache Pods + bundler
+        uses: actions/cache@v4
+        with:
+          path: |
+            TurboModuleTestingMatrix/apps/${{ matrix.rn }}/HostApp/ios/Pods
+            TurboModuleTestingMatrix/apps/${{ matrix.rn }}/HostApp/vendor/bundle
+          key: pods-${{ runner.os }}-${{ matrix.rn }}-${{ hashFiles(format('TurboModuleTestingMatrix/apps/{0}/HostApp/Podfile.lock', matrix.rn), format('TurboModuleTestingMatrix/apps/{0}/HostApp/Gemfile.lock', matrix.rn)) }}
+
+      - name: Cache CMake build dir
+        uses: actions/cache@v4
+        with:
+          path: TurboModuleTestingMatrix/build/${{ matrix.rn }}
+          key: cmake-${{ runner.os }}-${{ matrix.rn }}-${{ hashFiles('TurboModuleTesting/**/*.cmake', 'TurboModuleTesting/CMakeLists.txt', 'TurboModuleTesting/cpp/**', 'TurboModuleTestingMatrix/CMakeLists.txt', 'TurboModuleTestingMatrix/CMake/**', 'TurboModuleTestingMatrix/RTNTestableModule/**') }}
+
+      - name: Run matrix for ${{ matrix.rn }}
+        working-directory: TurboModuleTestingMatrix
+        env:
+          TURBO_MODULE_TESTING_SRC: ${{ github.workspace }}/TurboModuleTesting
+        run: ./scripts/run-matrix.sh ${{ matrix.rn }}
+
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: results-${{ matrix.rn }}
+          path: TurboModuleTestingMatrix/results/
+
+      - name: Publish JUnit report
+        if: always()
+        uses: mikepenz/action-junit-report@v4
+        with:
+          report_paths: 'TurboModuleTestingMatrix/results/**/junit.xml'
+          check_name: 'ctest (RN ${{ matrix.rn }})'
