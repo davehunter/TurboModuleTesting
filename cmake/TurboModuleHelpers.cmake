@@ -40,7 +40,28 @@ function (TurboModuleTesting_ConfigureBasedOnApp app_path)
     set(HERMES_INCLUDE_PATH "${HERMES_BASE_PATH}/include" PARENT_SCOPE)
     set(REACT_COMMON_DIR "${NODE_MODULES_PATH}/react-native/ReactCommon")
     set(REACT_COMMON_DIR "${NODE_MODULES_PATH}/react-native/ReactCommon" PARENT_SCOPE)
-  
+
+    # Parse the host app's installed React Native version from its package.json
+    # so we can emit compile-time guards for code paths that differ across RN
+    # versions (e.g. TurboModuleBinding::install signature change in 0.84).
+    set(RN_PKG_JSON "${NODE_MODULES_PATH}/react-native/package.json")
+    set(TMT_RN_VERSION_MAJOR 0)
+    set(TMT_RN_VERSION_MINOR 0)
+    set(TMT_RN_VERSION_PATCH 0)
+    if(EXISTS "${RN_PKG_JSON}")
+      file(READ "${RN_PKG_JSON}" _rn_pkg_contents)
+      string(JSON _rn_version GET "${_rn_pkg_contents}" version)
+      if(_rn_version MATCHES "^([0-9]+)\\.([0-9]+)\\.([0-9]+)")
+        set(TMT_RN_VERSION_MAJOR ${CMAKE_MATCH_1})
+        set(TMT_RN_VERSION_MINOR ${CMAKE_MATCH_2})
+        set(TMT_RN_VERSION_PATCH ${CMAKE_MATCH_3})
+      endif()
+    endif()
+    set(TMT_RN_VERSION_MAJOR ${TMT_RN_VERSION_MAJOR} PARENT_SCOPE)
+    set(TMT_RN_VERSION_MINOR ${TMT_RN_VERSION_MINOR} PARENT_SCOPE)
+    set(TMT_RN_VERSION_PATCH ${TMT_RN_VERSION_PATCH} PARENT_SCOPE)
+    message(STATUS "⚛️🚀 React Native version: ${TMT_RN_VERSION_MAJOR}.${TMT_RN_VERSION_MINOR}.${TMT_RN_VERSION_PATCH}")
+
     # CODEGEN_BASE_PATH can change depending on RN version.  Assume RN 0.84, and fall back to a more general path if the 0.84 one doesn't exist.
     set(CODEGEN_BASE_PATH "${HOST_APP_PATH}/ios/build/generated/ios/ReactCodegen")
     set(CODEGEN_BASE_PATH "${HOST_APP_PATH}/ios/build/generated/ios/ReactCodegen" PARENT_SCOPE)
@@ -64,6 +85,12 @@ function (TurboModuleTesting_ConfigureBasedOnApp app_path)
     add_subdirectory("${REACT_COMMON_DIR}/runtimeexecutor" "${CMAKE_BINARY_DIR}/runtimeexecutor")
     add_subdirectory("${REACT_COMMON_DIR}/react/nativemodule/core" "${CMAKE_BINARY_DIR}/react_nativemodule_core")
     add_subdirectory("${REACT_COMMON_DIR}/cxxreact" "${CMAKE_BINARY_DIR}/cxxreact")
+    # RN 0.85+ moved JSRuntimeBindings (referenced by jsiexecutor) into a new
+    # `jsitooling` subdirectory. It must be added before jsiexecutor so the
+    # include paths and target are available.
+    if(EXISTS "${REACT_COMMON_DIR}/jsitooling/CMakeLists.txt")
+      add_subdirectory("${REACT_COMMON_DIR}/jsitooling" "${CMAKE_BINARY_DIR}/jsitooling")
+    endif()
     add_subdirectory("${REACT_COMMON_DIR}/jsiexecutor" "${CMAKE_BINARY_DIR}/jsiexecutor")
 
     set(RN_TARGETS
@@ -79,6 +106,9 @@ function (TurboModuleTesting_ConfigureBasedOnApp app_path)
         jsireact
         runtimeexecutor
     )
+    if(TARGET jsitooling)
+      list(APPEND RN_TARGETS jsitooling)
+    endif()
 
     foreach(rn_target IN LISTS RN_TARGETS)
         if(TARGET ${rn_target})
@@ -98,6 +128,15 @@ function (TurboModuleTesting_ConfigureBasedOnApp app_path)
 
     LinkInHermes(TurboModuleTesting)
     target_link_libraries(TurboModuleTesting glog_stub react_utils react_bridging)
+
+    # Surface RN version to translation units that include TurboModuleTesting headers
+    # (e.g. TurboModuleTestingEnvironment.h, which selects an install() overload
+    # based on the deprecation introduced in RN 0.84).
+    target_compile_definitions(TurboModuleTesting PUBLIC
+      TMT_RN_VERSION_MAJOR=${TMT_RN_VERSION_MAJOR}
+      TMT_RN_VERSION_MINOR=${TMT_RN_VERSION_MINOR}
+      TMT_RN_VERSION_PATCH=${TMT_RN_VERSION_PATCH}
+    )
 
     foreach(rn_stub_lib IN ITEMS folly_runtime glog glog_init boost jsi)
       if(NOT TARGET ${rn_stub_lib})
@@ -170,6 +209,10 @@ function(ApplyAppleReactNativeSettings targetName)
     "${REACT_COMMON_DIR}/react/utils"
     "${REACT_COMMON_DIR}/react/nativemodule/core"
   )
+  # RN 0.85+ ships <react/runtime/JSRuntimeBindings.h> via jsitooling/.
+  if(EXISTS "${REACT_COMMON_DIR}/jsitooling")
+    list(APPEND REACT_COMMON_INCLUDE_DIRS "${REACT_COMMON_DIR}/jsitooling")
+  endif()
 
   get_target_property(rn_target_type ${targetName} TYPE)
   if(rn_target_type STREQUAL "INTERFACE_LIBRARY")

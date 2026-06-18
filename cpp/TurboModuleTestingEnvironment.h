@@ -64,7 +64,17 @@ public:
 private:
     void setupTurboModuleEnvironment()
     {
-        auto turboModuleProvider = [this](const std::string& name) -> std::shared_ptr<facebook::react::TurboModule> {
+        // RN 0.84 deprecated the `TurboModuleProviderFunctionType` overload of
+        // `TurboModuleBinding::install` in favor of a runtime-aware variant.
+        // The framework's host app sets TMT_RN_VERSION_MINOR from its installed
+        // react-native package.json so we pick the right lambda signature.
+#if defined(TMT_RN_VERSION_MINOR) && TMT_RN_VERSION_MINOR >= 84
+        auto turboModuleProvider = [this](facebook::jsi::Runtime& /*runtime*/, const std::string& name)
+            -> std::shared_ptr<facebook::react::TurboModule> {
+#else
+        auto turboModuleProvider = [this](const std::string& name)
+            -> std::shared_ptr<facebook::react::TurboModule> {
+#endif
             auto turboModuleLookup = _turboModuleCache.find(name);
             if (turboModuleLookup != _turboModuleCache.end()) {
                 return turboModuleLookup->second;
