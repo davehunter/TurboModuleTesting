@@ -70,7 +70,14 @@ function (TurboModuleTesting_ConfigureBasedOnApp app_path)
       set(CODEGEN_BASE_PATH "${HOST_APP_PATH}/ios/build/generated/ios" PARENT_SCOPE)
     endif()
 
-    include("${REACT_COMMON_DIR}/cmake-utils/internal/react-native-platform-selector.cmake")
+    # `react-native-platform-selector.cmake` was introduced in RN 0.81; it
+    # defines `react_native_android_selector` which 0.81+ hermes/* CMakeLists
+    # call. RN 0.80 doesn't ship the file and doesn't reference the function,
+    # so skip the include when the file isn't present.
+    set(_RN_PLATFORM_SELECTOR "${REACT_COMMON_DIR}/cmake-utils/internal/react-native-platform-selector.cmake")
+    if(EXISTS "${_RN_PLATFORM_SELECTOR}")
+      include("${_RN_PLATFORM_SELECTOR}")
+    endif()
 
     add_subdirectory("${REACT_COMMON_DIR}/callinvoker" "${CMAKE_BINARY_DIR}/callinvoker")
     add_subdirectory("${REACT_COMMON_DIR}/reactperflogger" "${CMAKE_BINARY_DIR}/reactperflogger")
@@ -83,6 +90,13 @@ function (TurboModuleTesting_ConfigureBasedOnApp app_path)
     add_library(jsinspector INTERFACE)
     target_include_directories(jsinspector INTERFACE "${REACT_COMMON_DIR}")
     add_subdirectory("${REACT_COMMON_DIR}/runtimeexecutor" "${CMAKE_BINARY_DIR}/runtimeexecutor")
+    # RN 0.80's runtimeexecutor/ is header-only (`RuntimeExecutor.h` only); the
+    # OBJECT library has no source from which CMake can infer a linker
+    # language, so the Generate step fails. Setting LINKER_LANGUAGE explicitly
+    # is a no-op for 0.81+ (which has .cpp files) and unblocks 0.80.
+    if(TARGET runtimeexecutor)
+      set_target_properties(runtimeexecutor PROPERTIES LINKER_LANGUAGE CXX)
+    endif()
     add_subdirectory("${REACT_COMMON_DIR}/react/nativemodule/core" "${CMAKE_BINARY_DIR}/react_nativemodule_core")
     add_subdirectory("${REACT_COMMON_DIR}/cxxreact" "${CMAKE_BINARY_DIR}/cxxreact")
     # RN 0.85+ moved JSRuntimeBindings (referenced by jsiexecutor) into a new
@@ -108,6 +122,29 @@ function (TurboModuleTesting_ConfigureBasedOnApp app_path)
     )
     if(TARGET jsitooling)
       list(APPEND RN_TARGETS jsitooling)
+    endif()
+
+    # RN 0.80's per-subdir CMakeLists glob `platform/android/.../*.cpp`
+    # unconditionally; the android+cxx selector pattern that gates those was
+    # introduced in 0.81. On 0.80, strip android-only sources from every RN
+    # target so the macOS build doesn't try to compile JNI / pthread_setname_np
+    # / fbjni-using translation units. Where a platform/cxx variant of a header
+    # exists, add its include path so consumers can still resolve the
+    # interface (e.g. react/utils/LowPriorityExecutor.h).
+    if(TMT_RN_VERSION_MINOR LESS 81)
+      foreach(_tgt IN LISTS RN_TARGETS)
+        if(TARGET ${_tgt})
+          get_target_property(_srcs ${_tgt} SOURCES)
+          if(_srcs)
+            list(FILTER _srcs EXCLUDE REGEX "platform/android/.*\\.cpp$")
+            set_target_properties(${_tgt} PROPERTIES SOURCES "${_srcs}")
+          endif()
+        endif()
+      endforeach()
+      if(TARGET react_utils AND EXISTS "${REACT_COMMON_DIR}/react/utils/platform/cxx")
+        target_include_directories(react_utils PUBLIC
+          "${REACT_COMMON_DIR}/react/utils/platform/cxx")
+      endif()
     endif()
 
     foreach(rn_target IN LISTS RN_TARGETS)
@@ -138,7 +175,12 @@ function (TurboModuleTesting_ConfigureBasedOnApp app_path)
       TMT_RN_VERSION_PATCH=${TMT_RN_VERSION_PATCH}
     )
 
-    foreach(rn_stub_lib IN ITEMS folly_runtime glog glog_init boost jsi)
+    # INTERFACE stubs satisfy unconditional target_link_libraries(... fbjni ...)
+    # calls that RN's own CMakeLists make. fbjni / reactnativejni / log are
+    # android-only; we strip the android sources that would have referenced
+    # their symbols, so the link line becomes harmless when these are stubs.
+    foreach(rn_stub_lib IN ITEMS folly_runtime glog glog_init boost jsi
+                                 fbjni reactnativejni log)
       if(NOT TARGET ${rn_stub_lib})
         add_library(${rn_stub_lib} INTERFACE)
       endif()
