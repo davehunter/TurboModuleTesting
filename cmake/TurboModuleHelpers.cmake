@@ -82,7 +82,12 @@ function (TurboModuleTesting_ConfigureBasedOnApp app_path)
     add_subdirectory("${REACT_COMMON_DIR}/callinvoker" "${CMAKE_BINARY_DIR}/callinvoker")
     add_subdirectory("${REACT_COMMON_DIR}/reactperflogger" "${CMAKE_BINARY_DIR}/reactperflogger")
     add_subdirectory("${REACT_COMMON_DIR}/logger" "${CMAKE_BINARY_DIR}/logger")
-    add_subdirectory("${REACT_COMMON_DIR}/react/timing" "${CMAKE_BINARY_DIR}/react_timing")
+    # `react/timing` was introduced in RN 0.76. Older versions don't ship it
+    # and don't reference it from any other subdir; skip the include when the
+    # directory isn't present so 0.75 and earlier can configure.
+    if(EXISTS "${REACT_COMMON_DIR}/react/timing/CMakeLists.txt")
+      add_subdirectory("${REACT_COMMON_DIR}/react/timing" "${CMAKE_BINARY_DIR}/react_timing")
+    endif()
     add_subdirectory("${REACT_COMMON_DIR}/react/bridging" "${CMAKE_BINARY_DIR}/react_bridging")
     add_subdirectory("${REACT_COMMON_DIR}/react/debug" "${CMAKE_BINARY_DIR}/react_debug")
     add_subdirectory("${REACT_COMMON_DIR}/react/featureflags" "${CMAKE_BINARY_DIR}/react_featureflags")
@@ -138,6 +143,28 @@ function (TurboModuleTesting_ConfigureBasedOnApp app_path)
           if(_srcs)
             list(FILTER _srcs EXCLUDE REGEX "platform/android/.*\\.cpp$")
             set_target_properties(${_tgt} PROPERTIES SOURCES "${_srcs}")
+            # RN < 0.80 globs `*.cpp *.mm` for some subdirs (e.g.
+            # react/utils includes ManagedObjectWrapper.mm). Xcode's iOS
+            # build settings enable ARC and auto-link Foundation; our
+            # CMake build doesn't, so we do it explicitly: enable
+            # -fobjc-arc on Objective-C/C++ sources via a per-language
+            # generator expression (the only way that propagates across
+            # add_subdirectory scoping), and link Foundation. RN 0.80+
+            # doesn't reach into .mm files so this is a no-op for them.
+            set(_objc_srcs ${_srcs})
+            list(FILTER _objc_srcs INCLUDE REGEX "\\.(m|mm)$")
+            if(_objc_srcs)
+              target_compile_options(${_tgt} PRIVATE
+                "$<$<COMPILE_LANGUAGE:OBJC,OBJCXX>:-fobjc-arc>"
+              )
+              get_target_property(_type ${_tgt} TYPE)
+              if(NOT _type STREQUAL "INTERFACE_LIBRARY")
+                # Plain signature — RN's own CMakeLists call
+                # target_link_libraries(<rn-target> …) without keywords;
+                # mixing plain and keyword on the same target is a CMake error.
+                target_link_libraries(${_tgt} "-framework Foundation")
+              endif()
+            endif()
           endif()
         endif()
       endforeach()
@@ -183,6 +210,18 @@ function (TurboModuleTesting_ConfigureBasedOnApp app_path)
                                  fbjni reactnativejni log)
       if(NOT TARGET ${rn_stub_lib})
         add_library(${rn_stub_lib} INTERFACE)
+      endif()
+    endforeach()
+    # glog and glog_init are special: RN 0.75's react_utils is built as
+    # SHARED (not OBJECT) and calls google::LogMessage symbols, so an empty
+    # INTERFACE stub leaves the dylib link unresolved. Back the stubs with
+    # the framework's glog_stub library, which provides minimal no-op
+    # implementations of the glog API. Safe for 0.76+ — those versions
+    # never reach the glog symbols at link time.
+    foreach(glog_target IN ITEMS glog glog_init)
+      get_target_property(_type ${glog_target} TYPE)
+      if(_type STREQUAL "INTERFACE_LIBRARY")
+        target_link_libraries(${glog_target} INTERFACE glog_stub)
       endif()
     endforeach()
 
@@ -256,19 +295,30 @@ function(ApplyAppleReactNativeSettings targetName)
     list(APPEND REACT_COMMON_INCLUDE_DIRS "${REACT_COMMON_DIR}/jsitooling")
   endif()
 
+  # FOLLY_NO_CONFIG=1 tells Folly to skip its `#include <folly/folly-config.h>`
+  # and fall back to compile-time defaults. RN 0.80+ generates folly-config.h
+  # as part of pod install; RN 0.79 and earlier don't, so the include fails
+  # everywhere. The fallback defaults are conservative ("no fancy features
+  # available") and work fine for the surface area the matrix's tests touch.
   get_target_property(rn_target_type ${targetName} TYPE)
   if(rn_target_type STREQUAL "INTERFACE_LIBRARY")
     target_include_directories(${targetName} INTERFACE
       ${REACT_COMMON_INCLUDE_DIRS}
       ${THIRD_PARTY_INCLUDE_DIRS}
     )
-    target_compile_definitions(${targetName} INTERFACE FOLLY_CFG_NO_COROUTINES=1)
+    target_compile_definitions(${targetName} INTERFACE
+      FOLLY_CFG_NO_COROUTINES=1
+      FOLLY_NO_CONFIG=1
+    )
   else()
     target_include_directories(${targetName} PUBLIC
       ${REACT_COMMON_INCLUDE_DIRS}
       ${THIRD_PARTY_INCLUDE_DIRS}
     )
-    target_compile_definitions(${targetName} PUBLIC FOLLY_CFG_NO_COROUTINES=1)
+    target_compile_definitions(${targetName} PUBLIC
+      FOLLY_CFG_NO_COROUTINES=1
+      FOLLY_NO_CONFIG=1
+    )
   endif()
 endfunction()
 
@@ -282,10 +332,22 @@ function(LinkInHermes targetName)
       "${HERMES_INCLUDE_PATH}"
     )
   else()
+    # Use the plain target_link_libraries signature here — RN's own
+    # CMakeLists already call target_link_libraries(<rn-target> …) without
+    # keywords, and CMake forbids mixing plain and keyword signatures on
+    # the same target.
     target_link_libraries(${targetName}
       "${HERMES_FRAMEWORK_PATH}"
     )
-    target_include_directories(${targetName} PRIVATE
+    # PUBLIC (not PRIVATE) on the include path so that <jsi/jsi.h> resolves
+    # for downstream consumers — e.g. the matrix's test executable, which
+    # transitively picks up Hermes headers via this target chain. For RN
+    # 0.76+ the `react_timing` INTERFACE library coincidentally propagated
+    # this include path; RN 0.75 doesn't have that target, so the chain
+    # breaks unless Hermes is explicitly PUBLIC here. The keyword signature
+    # is OK on target_include_directories because RN's CMakeLists already
+    # use it with keywords.
+    target_include_directories(${targetName} PUBLIC
       "${HERMES_INCLUDE_PATH}"
     )
   endif()
